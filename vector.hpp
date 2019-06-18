@@ -7,28 +7,36 @@
 
 #include <variant>
 #include <iterator>
+#include <memory>
 #include <assert.h>
 
 template<typename T>
 class vector {
   public:
-    typedef T  value_type;
+    typedef T value_type;
     typedef T* pointer;
     typedef T& reference;
     typedef T const& const_reference;
   private:
     typedef char* mix_ptr;
     typedef size_t size_type;
-    typedef size_t size_pointer;
     std::variant<mix_ptr, value_type> variant_;
     static_assert(sizeof(variant_) <= sizeof(void*) + std::max(sizeof(T), sizeof(void*)));
+
+    // _____________________________________________________________________________________________
+    // service function
 
     mix_ptr allocate(size_type n) {
         return reinterpret_cast<mix_ptr>(operator new(n));
     }
 
     mix_ptr allocate_from_size_with_header(size_type n) {
-        return reinterpret_cast<mix_ptr>(operator new(3 * sizeof(size_type) + n * sizeof(value_type)));
+        return reinterpret_cast<mix_ptr>(operator new(
+            3 * sizeof(size_type) + n * sizeof(value_type)));
+    }
+
+    void free_empty_memory(mix_ptr ptr) {
+        operator delete(static_cast<void*>(ptr));
     }
 
     size_type& vec_size_(mix_ptr ptr) noexcept {
@@ -57,7 +65,8 @@ class vector {
         return std::get<0>(variant_);
     }
 
-
+    // _____________________________________________________________________________________________
+    // helpful method
 
     size_type& size_() noexcept {
         assert(variant_.index() == 0);
@@ -87,6 +96,31 @@ class vector {
         return ref_cnt_() == 1;
     }
 
+    bool is_empty() noexcept {
+        return (variant_.index() == 0 &&
+            (std::get<0>(variant_) == nullptr
+                || (std::get<0>(variant_) != nullptr && size_() == 0)));
+    }
+
+    void set_null() noexcept {
+        variant_ = nullptr;
+    }
+
+    void copy_from_(mix_ptr src_ptr) {
+        mix_ptr alloc_mem = nullptr;
+        try {
+            alloc_mem = allocate_from_size_with_header(vec_cap_(src_ptr));
+            std::uninitialized_copy(&vec_size_(src_ptr),
+                                    &vec_size_(src_ptr) + 3, &vec_size_(alloc_mem));
+            std::uninitialized_copy(vec_data_(src_ptr), vec_data_(src_ptr) + vec_size_(src_ptr),
+                                    vec_data_(alloc_mem));
+        } catch (...) {
+            free_empty_memory(alloc_mem);
+            throw;
+        }
+
+    }
+
 
     // _____________________________________________________________________________________________
     // _____________________________________________________________________________________________
@@ -95,8 +129,43 @@ class vector {
   public:
     vector() noexcept = default;
 
+    // strong
     vector(vector const& other) {
+        if (other.is_small()) {
+            try {
+                variant_ = other.variant_;
+            } catch (...) {
+                set_null();
+                throw;
+            }
+        } else {
+            variant_ = other.variant_; // noexcept
+            ++ref_cnt_(); // noexcept
+        }
+    }
 
+    vector& operator=(vector const& other) {
+        if (is_small()) {
+            if (empty()) {
+                try {
+                    variant_ = other.variant_;
+                } catch (...) {
+                    set_null();
+                    throw;
+                }
+            } else {
+                variant_ = other.variant_; // depends value_type guarantee
+            }
+        } else {
+            //TODO
+        }
+    }
+
+
+
+
+    bool empty() noexcept {
+        return is_empty();
     }
 };
 
