@@ -245,6 +245,8 @@ class vector {
   private:
     typedef char* mix_ptr;
     typedef size_t size_type;
+    static const size_type DEFAULT_CAPACITY_ = 128;
+
     std::variant<mix_ptr, value_type> variant_;
     static_assert(sizeof(variant_) <= sizeof(void*) + std::max(sizeof(T), sizeof(void*)));
 
@@ -285,6 +287,15 @@ class vector {
         std::destroy(ptr, ptr + obj_cnt);
     }
 
+    // noexcept if only if value_type destruction nothrow
+    void destruct(pointer first, pointer last) noexcept {
+        std::destroy(first, last);
+    }
+
+    void free_with_destruct(mix_ptr ptr) noexcept {
+        destruct(vec_data_(ptr), vec_size_(ptr));
+    }
+
 
     // _____________________________________________________________________________________________
     // helpful method
@@ -304,9 +315,17 @@ class vector {
         return vec_size_(std::get<0>(variant_));
     }
 
+    size_type real_size_() noexcept {
+        return variant_.index() == 1 ? 1 : (is_empty() ? 0 : size_());
+    }
+
     size_type& capacity_() noexcept {
         assert(variant_.index() == 0);
         return vec_cap_(std::get<0>(variant_));
+    }
+
+    size_type real_capacity_() noexcept {
+        return variant_.index() == 1 ? 1 : (get_mix_ptr_() == nullptr ? 1 : capacity_());
     }
 
     size_type& ref_cnt_() noexcept {
@@ -344,18 +363,22 @@ class vector {
         }
     }
 
+    void set_header_(size_type sz, size_type cp, size_type ref = 1) {
+        size_() = sz;
+        capacity_() = cp;
+        ref_cnt_() = ref;
+    }
+
     pointer get_unique_data() {
         if (is_small()) {
             return &val_;
         } else {
-            if (!is_unique()) {
-                make_copy();
-            }
+            make_copy_if_not_unique();
             return data_();
         }
     }
 
-    // strong
+    // strong, big obj only
     mix_ptr copy_from_(mix_ptr src_ptr) {
         mix_ptr alloc_mem = nullptr;
         try {
@@ -371,10 +394,63 @@ class vector {
         }
     }
 
-    // strong, safety copy
-    void make_copy() {
+    // strong, big obj only
+    mix_ptr copy_from_(mix_ptr src_ptr, size_type new_cap) {
+        mix_ptr alloc_mem = nullptr;
+        try {
+            alloc_mem = allocate_from_size_with_header(new_cap);
+            std::uninitialized_copy(&vec_size_(src_ptr),
+                                    &vec_size_(src_ptr) + 3, &vec_size_(alloc_mem));
+            std::uninitialized_copy(vec_data_(src_ptr), vec_data_(src_ptr) + vec_size_(src_ptr),
+                                    vec_data_(alloc_mem));
+            return alloc_mem;
+        } catch (...) {
+            free_empty_memory(alloc_mem);
+            throw;
+        }
+    }
+
+    // strong, safety copy for big obj only
+    void make_copy_if_not_unique() {
+        if (is_unique()) {
+            return;
+        }
         mix_ptr new_mem = copy_from_(get_mix_ptr_());
         cut_link_(get_mix_ptr_());
+        set_header_(size_(), capacity_());
+        variant_ = new_mem;
+    }
+
+    // strong
+    void extend_(size_type new_cap) {
+        if (is_small()) {
+            mix_ptr alloc_mem = nullptr;
+            try {
+                alloc_mem = allocate_from_size_with_header(new_cap);
+                if (!empty()) {
+                    std::uninitialized_copy(&val_(), &val_() + 1, vec_data_(alloc_mem));
+                    set_header_(1, new_cap);
+                } else {
+                    set_header_(0, new_cap);
+                }
+            } catch (...) {
+                free_empty_memory(alloc_mem);
+                throw;
+            }
+            variant_ = alloc_mem;
+        } else {
+            mix_ptr new_mem = copy_from_(get_mix_ptr_(), new_cap);
+            cut_link_(get_mix_ptr_());
+            set_header_(size_(), new_cap);
+            variant_ = new_mem;
+        }
+    }
+
+    // strong, for big data only
+    void shrink_() {
+        mix_ptr new_mem = copy_from_(get_mix_ptr_(), size_());
+        cut_link_(get_mix_ptr_());
+        set_header_(size_(), size_());
         variant_ = new_mem;
     }
 
@@ -466,13 +542,120 @@ class vector {
         // TODO 
     }
 
+    pointer data() {
+        return get_unique_data();
+    }
+
+    iterator begin() {
+        return iterator(data());
+    }
+
+    const_iterator cbegin() const {
+        return const_iterator(data());
+    }
+
+    iterator end() {
+        return iterator(data() + size());
+    }
+
+    const_iterator cend() const {
+        return const_iterator(data() + size());
+    }
+
+    reverse_iterator rbegin() {
+        return reverse_iterator(end());
+    }
+
+    const_reverse_iterator crbegin() const {
+        return const_reverse_iterator(cend());
+    }
+
+    reverse_iterator rend() {
+        return reverse_iterator(begin());
+    }
+
+    const_reverse_iterator crend() const {
+        return const_reverse_iterator(cbegin());
+    }
+
     bool empty() noexcept {
         return is_empty();
     }
 
+    size_type size() const noexcept {
+        return real_size_();
+    }
+
+    // strong
+    void reserve(size_type new_cap) {
+        if (new_cap > capacity()) {
+            extend_(new_cap);
+        }
+    }
+
+    size_type capacity() const noexcept {
+        return real_capacity_();
+    }
+
+    // strong
+    void shrink_to_fit() {
+        if (size() < capacity()) {
+            if (size() == 0) {
+                clear();
+            } else if (size() == 1) {
+                mix_ptr old = get_mix_ptr_();
+                try {
+                    variant_ = vec_data_(old)[0];
+                } catch (...) {
+                    variant_ = old;
+                    throw;
+                }
+                cut_link_(old);
+            } else {
+                shrink_();
+            }
+        }
+    }
+
+    void resize(size_type new_size) {
+        if (new_size == size()) {
+            return;
+        }
+        if (new_size == 0) {
+            clear();
+        }
+        if (new_size == 1 && is_small() && empty()) {
+            try {
+                variant_ = value_type();
+            } catch (...) {
+                set_null();
+                throw;
+            }
+            return;
+        }
+        if (new_size < size()) {
+            make_copy_if_not_unique();
+            destruct(data() + new_size, data() + size());
+        } else {
+            mix_ptr ptr = copy_from_(get_mix_ptr_(), std::max(new_size, capacity()));
+            try {
+                std::uninitialized_fill(vec_data_(ptr) + size(),
+                                        vec_data_(ptr) + new_size, value_type());
+            } catch (...) {
+                free_with_destruct(ptr);
+                throw;
+            }
+            clear();
+            variant_ = ptr;
+            set_header_(new_size, std::max(new_size, capacity()));
+        }
+    }
+
     void clear() noexcept {
-        cut_link_(get_mix_ptr_());
-        variant_ = nullptr;
+        if (!is_small()) {
+            cut_link_(get_mix_ptr_());
+        }
+        set_null();
     }
 };
 
