@@ -316,7 +316,7 @@ class vector {
     }
 
     void construct(pointer ptr, const_reference value) {
-        new (ptr) value_type(value);
+        new(ptr) value_type(value);
     }
     void construct(pointer first, pointer last, const_reference value) {
         while (first != last) {
@@ -861,9 +861,19 @@ class vector {
         set_null();
     }
 
+    // basic, strong if "end insert"
+    iterator insert(const_iterator pos, const_reference elem) {
+        if (pos == end()) {
+            push_back(elem);
+            return end() - 1;
+        }
+        if (is_small()) {
+            if (pos != begin()) {
+                throw std::runtime_error("invalid iterator");
+            }
 
-
-
+        }
+    }
 
     // basic, strong if "end erase"
     iterator erase(const_iterator pos) {
@@ -915,7 +925,8 @@ class vector {
             pointer dst;
             pointer src;
             try {
-                for (dst = ptr_end, src = ptr_end + sz_erase; src < ptr_end + sz_end; ++src, ++dst) {
+                for (dst = ptr_end, src = ptr_end + sz_erase; src < ptr_end + sz_end;
+                     ++src, ++dst) {
                     *dst = *src;
                 }
                 destruct(dst, ptr_end + sz_end);
@@ -928,6 +939,42 @@ class vector {
         size_() = sz_begin + sz_end;
         return begin() + sz_begin;
     }
+
+    // basic
+    void swap(vector& other) {
+        size_type ind_this = variant_.index();
+        size_type ind_other = other.variant_.index();
+        if (ind_this == 0 && ind_other == 0) {
+            variant_.swap(other.variant_);
+        } else if (ind_this == 1 && ind_other == 1) {
+            try {
+                variant_.swap(other.variant_);
+            } catch (...) {
+                set_null();
+                other.set_null();
+                throw;
+            }
+        } else if (ind_this == 0 && ind_other == 1) {
+            mix_ptr this_data = get_mix_ptr_();
+            try {
+                variant_.swap(other.variant_);
+            } catch (...) {
+                variant_ = this_data;
+                other.set_null();
+                throw ;
+            }
+        } else {
+            mix_ptr other_data = other.get_mix_ptr_();
+            try {
+                variant_.swap(other.variant_);
+            } catch (...) {
+                other.variant_ = other_data;
+                set_null();
+                throw ;
+            }
+        }
+    }
+
 };
 
 template<typename T>
@@ -960,9 +1007,9 @@ bool operator>=(vector<T> const& a, vector<T> const& b) {
     return !(a < b);
 }
 
-//template <typename T>
-//void swap(vector<T>& a, vector<T>& b) {
-//    a.swap(b);
-//}
+template<typename T>
+void swap(vector<T>& a, vector<T>& b) {
+    a.swap(b);
+}
 
 #endif //SUPER_VECTOR__VECTOR_HPP_
