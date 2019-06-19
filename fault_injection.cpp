@@ -96,7 +96,7 @@ void fault_injection_point()
 
 void faulty_run(std::function<void ()> const& f)
 {
-#if 1
+#if 0
     f();
 #else
     assert(!context);

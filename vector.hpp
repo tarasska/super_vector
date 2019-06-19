@@ -236,14 +236,16 @@ class vector {
   public:
     typedef T value_type;
     typedef T* pointer;
+    typedef T const* const_pointer;
     typedef T& reference;
     typedef T const& const_reference;
     typedef vector_iterator<T> iterator;
-    typedef vector_const_iterator<T> const_iterator;
+    typedef vector_const_iterator<T const> const_iterator;
     typedef std::reverse_iterator<iterator> reverse_iterator;
     typedef std::reverse_iterator<const_iterator> const_reverse_iterator;
   private:
     typedef char* mix_ptr;
+    typedef char const* const_mix_ptr;
     typedef size_t size_type;
     static const size_type DEFAULT_CAPACITY_ = 128;
 
@@ -270,7 +272,15 @@ class vector {
         return *reinterpret_cast<size_type*>(ptr);
     }
 
+    size_type const& vec_size_(mix_ptr ptr) const noexcept {
+        return *reinterpret_cast<size_type*>(ptr);
+    }
+
     size_type& vec_cap_(mix_ptr ptr) noexcept {
+        return *reinterpret_cast<size_type*>(ptr + sizeof(size_type));
+    }
+
+    size_type const& vec_cap_(mix_ptr ptr) const noexcept {
         return *reinterpret_cast<size_type*>(ptr + sizeof(size_type));
     }
 
@@ -278,29 +288,54 @@ class vector {
         return *reinterpret_cast<size_type*>(ptr + 2 * sizeof(size_type));
     }
 
+    size_type const& vec_ref_(mix_ptr ptr) const noexcept {
+        return *reinterpret_cast<size_type*>(ptr + 2 * sizeof(size_type));
+    }
+
     pointer vec_data_(mix_ptr ptr) noexcept {
-        return *reinterpret_cast<size_type*>(ptr + 3 * sizeof(size_type));
+        return reinterpret_cast<pointer>(ptr + 3 * sizeof(size_type));
+    }
+
+    const_pointer vec_data_(mix_ptr ptr) const noexcept {
+        return reinterpret_cast<const_pointer>(ptr + 3 * sizeof(size_type));
     }
 
     // noexcept if only if value_type destruction nothrow
-    void destruct(pointer ptr, size_type obj_cnt) noexcept {
+    void destruct(pointer ptr, size_type obj_cnt) {
         std::destroy(ptr, ptr + obj_cnt);
     }
 
     // noexcept if only if value_type destruction nothrow
-    void destruct(pointer first, pointer last) noexcept {
+    void destruct(pointer first, pointer last) {
         std::destroy(first, last);
     }
 
-    void free_with_destruct(mix_ptr ptr) noexcept {
+    void free_with_destruct(mix_ptr ptr) {
         destruct(vec_data_(ptr), vec_size_(ptr));
+        free_empty_memory(ptr);
     }
+
+    void construct(pointer ptr, const_reference value) {
+        new (ptr) value_type(value);
+    }
+    void construct(pointer first, pointer last, const_reference value) {
+        while (first != last) {
+            construct(first, value);
+            ++first;
+        }
+    }
+
 
 
     // _____________________________________________________________________________________________
     // helpful method
 
-    value_type& val_() noexcept {
+    reference val_() noexcept {
+        assert(variant_.index() == 1);
+        return std::get<1>(variant_);
+    }
+
+    const_reference val_() const noexcept {
         assert(variant_.index() == 1);
         return std::get<1>(variant_);
     }
@@ -310,12 +345,22 @@ class vector {
         return std::get<0>(variant_);
     }
 
+    const_mix_ptr get_mix_ptr_() const noexcept {
+        assert(variant_.index() == 0);
+        return std::get<0>(variant_);
+    }
+
     size_type& size_() noexcept {
         assert(variant_.index() == 0);
         return vec_size_(std::get<0>(variant_));
     }
 
-    size_type real_size_() noexcept {
+    size_type size_() const noexcept {
+        assert(variant_.index() == 0);
+        return vec_size_(std::get<0>(variant_));
+    }
+
+    size_type real_size_() const noexcept {
         return variant_.index() == 1 ? 1 : (is_empty() ? 0 : size_());
     }
 
@@ -324,11 +369,21 @@ class vector {
         return vec_cap_(std::get<0>(variant_));
     }
 
-    size_type real_capacity_() noexcept {
+    size_type capacity_() const noexcept {
+        assert(variant_.index() == 0);
+        return vec_cap_(std::get<0>(variant_));
+    }
+
+    size_type real_capacity_() const noexcept {
         return variant_.index() == 1 ? 1 : (get_mix_ptr_() == nullptr ? 1 : capacity_());
     }
 
     size_type& ref_cnt_() noexcept {
+        assert(variant_.index() == 0);
+        return vec_ref_(std::get<0>(variant_));
+    }
+
+    size_type const& ref_cnt_() const noexcept {
         assert(variant_.index() == 0);
         return vec_ref_(std::get<0>(variant_));
     }
@@ -338,15 +393,20 @@ class vector {
         return vec_data_(std::get<0>(variant_));
     }
 
-    bool is_small() noexcept {
+    const_pointer data_() const noexcept {
+        assert(variant_.index() == 0);
+        return vec_data_(std::get<0>(variant_));
+    }
+
+    bool is_small() const noexcept {
         return variant_.index() == 1 || (variant_.index() == 0 && std::get<0>(variant_) == nullptr);
     }
 
-    bool is_unique() noexcept {
+    bool is_unique() const noexcept {
         return ref_cnt_() == 1;
     }
 
-    bool is_empty() noexcept {
+    bool is_empty() const noexcept {
         return (variant_.index() == 0 &&
             (std::get<0>(variant_) == nullptr
                 || (std::get<0>(variant_) != nullptr && size_() == 0)));
@@ -369,11 +429,25 @@ class vector {
         ref_cnt_() = ref;
     }
 
+    void set_header_(mix_ptr ptr, size_type sz, size_type cp, size_type ref = 1) {
+        vec_size_(ptr) = sz;
+        vec_cap_(ptr) = cp;
+        vec_ref_(ptr) = ref;
+    }
+
     pointer get_unique_data() {
         if (is_small()) {
-            return &val_;
+            return is_empty() ? nullptr : &val_();
         } else {
             make_copy_if_not_unique();
+            return data_();
+        }
+    }
+
+    const_pointer get_unique_const_data() const noexcept {
+        if (is_small()) {
+            return is_empty() ? nullptr : &val_();
+        } else {
             return data_();
         }
     }
@@ -387,6 +461,7 @@ class vector {
                                     &vec_size_(src_ptr) + 3, &vec_size_(alloc_mem));
             std::uninitialized_copy(vec_data_(src_ptr), vec_data_(src_ptr) + vec_size_(src_ptr),
                                     vec_data_(alloc_mem));
+            vec_ref_(alloc_mem) = 1; // attention
             return alloc_mem;
         } catch (...) {
             free_empty_memory(alloc_mem);
@@ -403,6 +478,8 @@ class vector {
                                     &vec_size_(src_ptr) + 3, &vec_size_(alloc_mem));
             std::uninitialized_copy(vec_data_(src_ptr), vec_data_(src_ptr) + vec_size_(src_ptr),
                                     vec_data_(alloc_mem));
+            vec_cap_(alloc_mem) = new_cap; // attention
+            vec_ref_(alloc_mem) = 1; // attention
             return alloc_mem;
         } catch (...) {
             free_empty_memory(alloc_mem);
@@ -417,7 +494,7 @@ class vector {
         }
         mix_ptr new_mem = copy_from_(get_mix_ptr_());
         cut_link_(get_mix_ptr_());
-        set_header_(size_(), capacity_());
+        set_header_(new_mem, size_(), capacity_());
         variant_ = new_mem;
     }
 
@@ -429,9 +506,9 @@ class vector {
                 alloc_mem = allocate_from_size_with_header(new_cap);
                 if (!empty()) {
                     std::uninitialized_copy(&val_(), &val_() + 1, vec_data_(alloc_mem));
-                    set_header_(1, new_cap);
+                    set_header_(alloc_mem, 1, new_cap);
                 } else {
-                    set_header_(0, new_cap);
+                    set_header_(alloc_mem, 0, new_cap);
                 }
             } catch (...) {
                 free_empty_memory(alloc_mem);
@@ -441,7 +518,7 @@ class vector {
         } else {
             mix_ptr new_mem = copy_from_(get_mix_ptr_(), new_cap);
             cut_link_(get_mix_ptr_());
-            set_header_(size_(), new_cap);
+            set_header_(new_mem, size_(), new_cap);
             variant_ = new_mem;
         }
     }
@@ -450,8 +527,68 @@ class vector {
     void shrink_() {
         mix_ptr new_mem = copy_from_(get_mix_ptr_(), size_());
         cut_link_(get_mix_ptr_());
-        set_header_(size_(), size_());
+        set_header_(new_mem, size_(), size_());
         variant_ = new_mem;
+    }
+
+    // strong
+    void init_small(const_reference elem) {
+        try {
+            variant_ = elem;
+        } catch (...) {
+            variant_ = nullptr;
+            throw;
+        }
+    }
+
+    // strong
+    void push_back_with_allocate(const_reference elem) {
+        mix_ptr ptr = nullptr;
+        if (is_small()) {
+            try {
+                ptr = allocate_from_size_with_header(DEFAULT_CAPACITY_);
+                set_header_(ptr, 1, DEFAULT_CAPACITY_);
+                construct(vec_data_(ptr), val_());
+            } catch (...) {
+                free_empty_memory(ptr);
+                throw;
+            }
+            try {
+                construct(vec_data_(ptr) + 1, elem);
+            } catch (...) {
+                free_with_destruct(ptr);
+                throw;
+            }
+            variant_ = ptr;
+        } else {
+            ptr = copy_from_(get_mix_ptr_(), capacity_() * 2);
+            try {
+                construct(vec_data_(ptr) + vec_size_(ptr), elem);
+            } catch (...) {
+                free_with_destruct(ptr);
+                throw;
+            }
+            cut_link_(get_mix_ptr_());
+            variant_ = ptr;
+        }
+    }
+
+    // strong
+    void push_back_in_place(const_reference elem) {
+        bool one = is_unique();
+        mix_ptr ptr = one ? get_mix_ptr_() : copy_from_(get_mix_ptr_());
+        try {
+            construct(vec_data_(ptr) + vec_size_(ptr), elem);
+        } catch (...) {
+            if (!one) {
+                free_with_destruct(ptr);
+            }
+            throw;
+        }
+        if (!one) {
+            cut_link_(get_mix_ptr_());
+            variant_ = ptr;
+        }
     }
 
     // _____________________________________________________________________________________________
@@ -460,6 +597,10 @@ class vector {
 
   public:
     vector() noexcept = default;
+
+    ~vector() {
+        clear();
+    }
 
     // strong
     vector(vector const& other) {
@@ -476,21 +617,24 @@ class vector {
         }
     }
 
-    // strong
-    template<typename InputIterator>
-    vector(InputIterator first, InputIterator last) {
-        // TODO
-    }
+//    // strong
+//    template<typename InputIterator>
+//    vector(InputIterator first, InputIterator last) {
+//        // TODO
+//    }
 
     // basic, value_type depended
     vector& operator=(vector const& other) {
-        if (*this == &other) {
+        if (this == &other) {
             return *this;
         }
         if (is_small()) {
             if (empty()) {
                 try {
                     variant_ = other.variant_;
+                    if (!other.is_small()) {
+                        ++ref_cnt_();
+                    }
                 } catch (...) {
                     set_null();
                     throw;
@@ -511,17 +655,22 @@ class vector {
             }
             cut_link_(old);
         }
+        return *this;
     }
 
-    // basic, value_type depended
-    template<typename InputIterator>
-    vector assign(InputIterator first, InputIterator last) {
-        // TODO
-    }
+//    // basic, value_type depended
+//    template<typename InputIterator>
+//    vector assign(InputIterator first, InputIterator last) {
+//        // TODO
+//    }
 
     // strong
     reference operator[](size_type ind) {
         return get_unique_data()[ind];
+    }
+
+    const_reference operator[](size_type ind) const noexcept {
+        return get_unique_const_data()[ind];
     }
 
     // strong
@@ -529,28 +678,60 @@ class vector {
         return get_unique_data()[0];
     }
 
-    // strong
-    reference back() {
-        return get_unique_data()[size_() - 1];
+    const_reference front() const noexcept {
+        return get_unique_const_data()[0];
     }
 
-    void push_back() {
-        // TODO
+    // strong
+    reference back() {
+        return get_unique_data()[size() - 1];
+    }
+
+    const_reference back() const noexcept {
+        return get_unique_const_data()[size() - 1];
+    }
+
+    // strong
+    void push_back(const_reference elem) {
+        if (is_small() && empty()) {
+            init_small(elem); // strong
+            return;
+        }
+        if (size() == capacity()) {
+            push_back_with_allocate(elem); // strong
+        } else {
+            push_back_in_place(elem); // strong
+        }
+        ++size_();
     }
 
     void pop_back() {
-        // TODO 
+        if (is_small() && size() == 1) {
+            variant_ = nullptr;
+            return;
+        }
+        make_copy_if_not_unique();
+        std::destroy(data() + size() - 1, data() + size());
+        --size_();
     }
 
     pointer data() {
         return get_unique_data();
     }
 
+    const_pointer data() const noexcept {
+        return get_unique_const_data();
+    }
+
     iterator begin() {
         return iterator(data());
     }
 
-    const_iterator cbegin() const {
+    const_iterator begin() const noexcept {
+        return const_iterator(data());
+    }
+
+    const_iterator cbegin() const noexcept {
         return const_iterator(data());
     }
 
@@ -558,7 +739,11 @@ class vector {
         return iterator(data() + size());
     }
 
-    const_iterator cend() const {
+    const_iterator end() const noexcept {
+        return const_iterator(data() + size());
+    }
+
+    const_iterator cend() const noexcept {
         return const_iterator(data() + size());
     }
 
@@ -566,7 +751,11 @@ class vector {
         return reverse_iterator(end());
     }
 
-    const_reverse_iterator crbegin() const {
+    const_reverse_iterator rbegin() const noexcept {
+        return const_reverse_iterator(cend());
+    }
+
+    const_reverse_iterator crbegin() const noexcept {
         return const_reverse_iterator(cend());
     }
 
@@ -574,7 +763,11 @@ class vector {
         return reverse_iterator(begin());
     }
 
-    const_reverse_iterator crend() const {
+    const_reverse_iterator rend() const noexcept {
+        return const_reverse_iterator(cbegin());
+    }
+
+    const_reverse_iterator crend() const noexcept {
         return const_reverse_iterator(cbegin());
     }
 
@@ -617,6 +810,7 @@ class vector {
         }
     }
 
+    // strong
     void resize(size_type new_size) {
         if (new_size == size()) {
             return;
@@ -651,12 +845,69 @@ class vector {
         }
     }
 
-    void clear() noexcept {
+    // noexcept if only if ~vaule_type() nothrow
+    void clear() {
         if (!is_small()) {
             cut_link_(get_mix_ptr_());
         }
         set_null();
     }
+
+
+
+
+
+    // basic
+    iterator erase(const_iterator first, const_iterator last) {
+        if (first == last) {
+            return first;
+        }
+        if (is_small()) {
+            pop_back();
+            return begin();
+        }
+        make_copy_if_not_unique();
+        if (last == end()) {
+            destruct(*first, *last);
+            return first;
+        }
+
+    }
 };
+
+template<typename T>
+bool operator==(vector<T> const& a, vector<T> const& b) {
+    return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin());
+}
+
+template<typename T>
+bool operator!=(vector<T> const& a, vector<T> const& b) {
+    return !(a == b);
+}
+
+template<typename T>
+bool operator<(vector<T> const& a, vector<T> const& b) {
+    return std::lexicographical_compare(a.begin(), a.end(), b.begin(), b.end());
+}
+
+template<typename T>
+bool operator>(vector<T> const& a, vector<T> const& b) {
+    return b < a;
+}
+
+template<typename T>
+bool operator<=(vector<T> const& a, vector<T> const& b) {
+    return !(a > b);
+}
+
+template<typename T>
+bool operator>=(vector<T> const& a, vector<T> const& b) {
+    return !(a < b);
+}
+
+//template <typename T>
+//void swap(vector<T>& a, vector<T>& b) {
+//    a.swap(b);
+//}
 
 #endif //SUPER_VECTOR__VECTOR_HPP_
