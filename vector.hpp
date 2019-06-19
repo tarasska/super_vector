@@ -247,7 +247,7 @@ class vector {
     typedef char* mix_ptr;
     typedef char const* const_mix_ptr;
     typedef size_t size_type;
-    static const size_type DEFAULT_CAPACITY_ = 128;
+    static const size_type DEFAULT_CAPACITY_ = 2;
 
     std::variant<mix_ptr, value_type> variant_;
     static_assert(sizeof(variant_) <= sizeof(void*) + std::max(sizeof(T), sizeof(void*)));
@@ -301,12 +301,14 @@ class vector {
     }
 
     // noexcept if only if value_type destruction nothrow
-    void destruct(pointer ptr, size_type obj_cnt) {
+    template<typename InputIt>
+    void destruct(InputIt ptr, size_type obj_cnt) {
         std::destroy(ptr, ptr + obj_cnt);
     }
 
     // noexcept if only if value_type destruction nothrow
-    void destruct(pointer first, pointer last) {
+    template<typename InputIt>
+    void destruct(InputIt first, InputIt last) {
         std::destroy(first, last);
     }
 
@@ -318,6 +320,7 @@ class vector {
     void construct(pointer ptr, const_reference value) {
         new(ptr) value_type(value);
     }
+
     void construct(pointer first, pointer last, const_reference value) {
         while (first != last) {
             construct(first, value);
@@ -525,8 +528,8 @@ class vector {
             variant_ = alloc_mem;
         } else {
             mix_ptr new_mem = copy_from_(get_mix_ptr_(), new_cap);
-            cut_link_(get_mix_ptr_());
             set_header_(new_mem, size_(), new_cap);
+            cut_link_(get_mix_ptr_());
             variant_ = new_mem;
         }
     }
@@ -625,11 +628,29 @@ class vector {
         }
     }
 
-//    // strong
-//    template<typename InputIterator>
-//    vector(InputIterator first, InputIterator last) {
-//        // TODO
-//    }
+    // strong
+    template<typename InputIterator>
+    vector(InputIterator first, InputIterator last) {
+        if (first + 1 == last) {
+            try {
+                variant_ = *first;
+            } catch (...) {
+                set_null();
+                throw;
+            }
+        } else {
+            mix_ptr new_mem = allocate_from_size_with_header(last - first);
+            try {
+                std::uninitialized_copy(first, last, vec_data_(new_mem));
+                set_header_(last - first, last - first);
+            } catch (...) {
+                free_empty_memory(new_mem);
+                set_null();
+                throw;
+            }
+            variant_ = new_mem;
+        }
+    }
 
     // basic, value_type depended
     vector& operator=(vector const& other) {
@@ -666,11 +687,12 @@ class vector {
         return *this;
     }
 
-//    // basic, value_type depended
-//    template<typename InputIterator>
-//    vector assign(InputIterator first, InputIterator last) {
-//        // TODO
-//    }
+    // basic, value_type depended
+    template<typename InputIterator>
+    vector assign(InputIterator first, InputIterator last) {
+        vector(first, last).swap(*this);
+        return *this;
+    }
 
     // strong
     reference operator[](size_type ind) {
@@ -871,7 +893,43 @@ class vector {
             if (pos != begin()) {
                 throw std::runtime_error("invalid iterator");
             }
-
+            vector<value_type> buf;
+            buf.push_back(*begin());
+            buf.push_back(elem);
+            swap(buf);
+            return begin();
+        } else {
+            value_type insert_elem(elem);
+            mix_ptr new_mem =
+                allocate_from_size_with_header(size() < capacity() ? capacity() : capacity() * 2);
+            pointer new_data_ptr = vec_data_(new_mem);
+            try {
+                std::uninitialized_copy(begin(), iterator(pos.ptr_), new_data_ptr);
+                set_header_(new_mem, pos - begin(), capacity() * 2);
+            } catch (...) {
+                free_empty_memory(new_mem);
+                throw;
+            }
+            new_data_ptr += pos - begin();
+            iterator ret_iter = iterator(new_data_ptr);
+            try {
+                construct(new_data_ptr, insert_elem);
+                ++vec_size_(new_mem);
+                ++new_data_ptr;
+            } catch (...) {
+                free_with_destruct(new_mem);
+                throw;
+            }
+            try {
+                std::uninitialized_copy(iterator(pos.ptr_), end(), new_data_ptr);
+                vec_size_(new_mem) += end() - pos;
+            } catch (...) {
+                free_with_destruct(new_mem);
+                throw;
+            }
+            cut_link_(get_mix_ptr_());
+            variant_ = new_mem;
+            return ret_iter;
         }
     }
 
@@ -961,7 +1019,7 @@ class vector {
             } catch (...) {
                 variant_ = this_data;
                 other.set_null();
-                throw ;
+                throw;
             }
         } else {
             mix_ptr other_data = other.get_mix_ptr_();
@@ -970,7 +1028,7 @@ class vector {
             } catch (...) {
                 other.variant_ = other_data;
                 set_null();
-                throw ;
+                throw;
             }
         }
     }
