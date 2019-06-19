@@ -240,7 +240,7 @@ class vector {
     typedef T& reference;
     typedef T const& const_reference;
     typedef vector_iterator<T> iterator;
-    typedef vector_const_iterator<T const> const_iterator;
+    typedef vector_const_iterator<T> const_iterator;
     typedef std::reverse_iterator<iterator> reverse_iterator;
     typedef std::reverse_iterator<const_iterator> const_reverse_iterator;
   private:
@@ -296,8 +296,8 @@ class vector {
         return reinterpret_cast<pointer>(ptr + 3 * sizeof(size_type));
     }
 
-    const_pointer vec_data_(mix_ptr ptr) const noexcept {
-        return reinterpret_cast<const_pointer>(ptr + 3 * sizeof(size_type));
+    pointer vec_data_(mix_ptr ptr) const noexcept {
+        return reinterpret_cast<pointer>(ptr + 3 * sizeof(size_type));
     }
 
     // noexcept if only if value_type destruction nothrow
@@ -393,7 +393,7 @@ class vector {
         return vec_data_(std::get<0>(variant_));
     }
 
-    const_pointer data_() const noexcept {
+    pointer data_() const noexcept {
         assert(variant_.index() == 0);
         return vec_data_(std::get<0>(variant_));
     }
@@ -447,6 +447,14 @@ class vector {
     const_pointer get_unique_const_data() const noexcept {
         if (is_small()) {
             return is_empty() ? nullptr : &val_();
+        } else {
+            return data_();
+        }
+    }
+
+    pointer get_iter_data() const noexcept {
+        if (is_small()) {
+            return is_empty() ? nullptr : const_cast<pointer>(&(std::get<1>(variant_)));
         } else {
             return data_();
         }
@@ -728,11 +736,11 @@ class vector {
     }
 
     const_iterator begin() const noexcept {
-        return const_iterator(data());
+        return const_iterator(get_iter_data());
     }
 
     const_iterator cbegin() const noexcept {
-        return const_iterator(data());
+        return const_iterator(get_iter_data());
     }
 
     iterator end() {
@@ -740,11 +748,11 @@ class vector {
     }
 
     const_iterator end() const noexcept {
-        return const_iterator(data() + size());
+        return const_iterator(get_iter_data() + size());
     }
 
     const_iterator cend() const noexcept {
-        return const_iterator(data() + size());
+        return const_iterator(get_iter_data() + size());
     }
 
     reverse_iterator rbegin() {
@@ -857,21 +865,68 @@ class vector {
 
 
 
-    // basic
+    // basic, strong if "end erase"
+    iterator erase(const_iterator pos) {
+        return erase(pos, pos + 1);
+    }
+
+    // basic, strong if "end erase"
     iterator erase(const_iterator first, const_iterator last) {
         if (first == last) {
-            return first;
+            return iterator(first.ptr_);
         }
         if (is_small()) {
-            pop_back();
+            if (first != last) {
+                pop_back();
+            }
             return begin();
         }
         make_copy_if_not_unique();
         if (last == end()) {
-            destruct(*first, *last);
-            return first;
+            destruct(first.ptr_, last.ptr_);
+            size_() -= last - first;
+            return end();
         }
-
+        typename const_iterator::difference_type sz_begin = first - begin();
+        typename const_iterator::difference_type sz_erase = last - first;
+        typename const_iterator::difference_type sz_end = end() - last;
+        pointer ptr_begin = data();
+        pointer ptr_erase = ptr_begin + sz_begin;
+        pointer ptr_end = ptr_erase + sz_erase;
+        if (sz_erase >= sz_end) {
+            destruct(ptr_erase, ptr_erase + sz_end);
+            try {
+                std::uninitialized_copy(ptr_end, ptr_end + sz_end, ptr_erase);
+                destruct(ptr_erase + sz_end, ptr_end + sz_end);
+            } catch (...) {
+                destruct(ptr_erase + sz_end, ptr_end + sz_end);
+                size_() = sz_begin;
+                throw;
+            }
+        } else {
+            destruct(ptr_erase, ptr_erase + sz_erase);
+            try {
+                std::uninitialized_copy(ptr_end, ptr_end + sz_erase, ptr_erase);
+            } catch (...) {
+                destruct(ptr_end, ptr_end + sz_end);
+                size_() = sz_begin;
+                throw;
+            }
+            pointer dst;
+            pointer src;
+            try {
+                for (dst = ptr_end, src = ptr_end + sz_erase; src < ptr_end + sz_end; ++src, ++dst) {
+                    *dst = *src;
+                }
+                destruct(dst, ptr_end + sz_end);
+            } catch (...) {
+                destruct(ptr_erase, ptr_end + sz_end);
+                size_() = sz_begin;
+                throw;
+            }
+        }
+        size_() = sz_begin + sz_end;
+        return begin() + sz_begin;
     }
 };
 

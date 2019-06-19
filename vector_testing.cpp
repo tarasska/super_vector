@@ -269,150 +269,150 @@ TEST(correctness, const_subscript)
 //    });
 //}
 //
-//TEST(correctness, erase)
-//{
-//    faulty_run([]
-//    {
-//        counted::no_new_instances_guard g;
-//        container c;
-//        c.push_back(4);
-//        c.push_back(8);
-//        c.push_back(15);
-//        c.push_back(16);
-//        c.push_back(23);
-//        c.push_back(42);
-//
-//        c.erase(c.begin() + 2);
-//        EXPECT_EQ(4, c[0]);
-//        EXPECT_EQ(8, c[1]);
-//        EXPECT_EQ(16, c[2]);
-//        EXPECT_EQ(23, c[3]);
-//        EXPECT_EQ(42, c[4]);
-//    });
-//}
-//
-//TEST(correctness, erase_begin)
-//{
-//    faulty_run([]
-//    {
-//        counted::no_new_instances_guard g;
-//        container c;
-//        c.push_back(4);
-//        c.push_back(8);
-//        c.push_back(15);
-//        c.push_back(16);
-//        c.push_back(23);
-//        c.push_back(42);
-//
-//        c.erase(c.begin());
-//        EXPECT_EQ(8, c[0]);
-//        EXPECT_EQ(15, c[1]);
-//        EXPECT_EQ(16, c[2]);
-//        EXPECT_EQ(23, c[3]);
-//        EXPECT_EQ(42, c[4]);
-//    });
-//}
-//
-//TEST(correctness, erase_end)
-//{
-//    faulty_run([]
-//    {
-//        counted::no_new_instances_guard g;
-//        container c;
-//        c.push_back(4);
-//        c.push_back(8);
-//        c.push_back(15);
-//        c.push_back(16);
-//        c.push_back(23);
-//        c.push_back(42);
-//
-//        c.erase(c.end() - 1);
-//        EXPECT_EQ(4, c[0]);
-//        EXPECT_EQ(8, c[1]);
-//        EXPECT_EQ(15, c[2]);
-//        EXPECT_EQ(16, c[3]);
-//        EXPECT_EQ(23, c[4]);
-//    });
-//}
-//
-//TEST(correctness, erase_range_begin)
-//{
-//    faulty_run([]
-//    {
-//        counted::no_new_instances_guard g;
-//        container c;
-//        c.push_back(4);
-//        c.push_back(8);
-//        c.push_back(15);
-//        c.push_back(16);
-//        c.push_back(23);
-//        c.push_back(42);
-//
-//        c.erase(c.begin(), c.begin() + 2);
-//        EXPECT_EQ(15, c[0]);
-//        EXPECT_EQ(16, c[1]);
-//        EXPECT_EQ(23, c[2]);
-//        EXPECT_EQ(42, c[3]);
-//    });
-//}
-//
-//TEST(correctness, erase_range_middle)
-//{
-//    faulty_run([]
-//    {
-//        counted::no_new_instances_guard g;
-//        container c;
-//        c.push_back(4);
-//        c.push_back(8);
-//        c.push_back(15);
-//        c.push_back(16);
-//        c.push_back(23);
-//        c.push_back(42);
-//
-//        c.erase(c.begin() + 2, c.end() - 1);
-//        EXPECT_EQ(4, c[0]);
-//        EXPECT_EQ(8, c[1]);
-//        EXPECT_EQ(42, c[2]);
-//    });
-//}
-//
-//TEST(correctness, erase_range_end)
-//{
-//    faulty_run([]
-//    {
-//        counted::no_new_instances_guard g;
-//        container c;
-//        c.push_back(4);
-//        c.push_back(8);
-//        c.push_back(15);
-//        c.push_back(16);
-//        c.push_back(23);
-//        c.push_back(42);
-//
-//        c.erase(c.begin() + 3, c.end());
-//        EXPECT_EQ(4, c[0]);
-//        EXPECT_EQ(8, c[1]);
-//        EXPECT_EQ(15, c[2]);
-//    });
-//}
-//
-//TEST(correctness, erase_range_all)
-//{
-//    faulty_run([]
-//    {
-//        counted::no_new_instances_guard g;
-//        container c;
-//        c.push_back(4);
-//        c.push_back(8);
-//        c.push_back(15);
-//        c.push_back(16);
-//        c.push_back(23);
-//        c.push_back(42);
-//
-//        c.erase(c.begin(), c.end());
-//        EXPECT_TRUE(c.empty());
-//    });
-//}
+TEST(correctness, erase)
+{
+    faulty_run([]
+    {
+        counted::no_new_instances_guard g;
+        container c;
+        c.push_back(4);
+        c.push_back(8);
+        c.push_back(15);
+        c.push_back(16);
+        c.push_back(23);
+        c.push_back(42);
+
+        c.erase(c.begin() + 2);
+        EXPECT_EQ(4, c[0]);
+        EXPECT_EQ(8, c[1]);
+        EXPECT_EQ(16, c[2]);
+        EXPECT_EQ(23, c[3]);
+        EXPECT_EQ(42, c[4]);
+    });
+}
+
+TEST(correctness, erase_begin)
+{
+    faulty_run([]
+    {
+        counted::no_new_instances_guard g;
+        container c;
+        c.push_back(4);
+        c.push_back(8);
+        c.push_back(15);
+        c.push_back(16);
+        c.push_back(23);
+        c.push_back(42);
+
+        c.erase(c.begin());
+        EXPECT_EQ(8, c[0]);
+        EXPECT_EQ(15, c[1]);
+        EXPECT_EQ(16, c[2]);
+        EXPECT_EQ(23, c[3]);
+        EXPECT_EQ(42, c[4]);
+    });
+}
+
+TEST(correctness, erase_end)
+{
+    faulty_run([]
+    {
+        counted::no_new_instances_guard g;
+        container c;
+        c.push_back(4);
+        c.push_back(8);
+        c.push_back(15);
+        c.push_back(16);
+        c.push_back(23);
+        c.push_back(42);
+
+        c.erase(c.end() - 1);
+        EXPECT_EQ(4, c[0]);
+        EXPECT_EQ(8, c[1]);
+        EXPECT_EQ(15, c[2]);
+        EXPECT_EQ(16, c[3]);
+        EXPECT_EQ(23, c[4]);
+    });
+}
+
+TEST(correctness, erase_range_begin)
+{
+    faulty_run([]
+    {
+        counted::no_new_instances_guard g;
+        container c;
+        c.push_back(4);
+        c.push_back(8);
+        c.push_back(15);
+        c.push_back(16);
+        c.push_back(23);
+        c.push_back(42);
+
+        c.erase(c.begin(), c.begin() + 2);
+        EXPECT_EQ(15, c[0]);
+        EXPECT_EQ(16, c[1]);
+        EXPECT_EQ(23, c[2]);
+        EXPECT_EQ(42, c[3]);
+    });
+}
+
+TEST(correctness, erase_range_middle)
+{
+    faulty_run([]
+    {
+        counted::no_new_instances_guard g;
+        container c;
+        c.push_back(4);
+        c.push_back(8);
+        c.push_back(15);
+        c.push_back(16);
+        c.push_back(23);
+        c.push_back(42);
+
+        c.erase(c.begin() + 2, c.end() - 1);
+        EXPECT_EQ(4, c[0]);
+        EXPECT_EQ(8, c[1]);
+        EXPECT_EQ(42, c[2]);
+    });
+}
+
+TEST(correctness, erase_range_end)
+{
+    faulty_run([]
+    {
+        counted::no_new_instances_guard g;
+        container c;
+        c.push_back(4);
+        c.push_back(8);
+        c.push_back(15);
+        c.push_back(16);
+        c.push_back(23);
+        c.push_back(42);
+
+        c.erase(c.begin() + 3, c.end());
+        EXPECT_EQ(4, c[0]);
+        EXPECT_EQ(8, c[1]);
+        EXPECT_EQ(15, c[2]);
+    });
+}
+
+TEST(correctness, erase_range_all)
+{
+    faulty_run([]
+    {
+        counted::no_new_instances_guard g;
+        container c;
+        c.push_back(4);
+        c.push_back(8);
+        c.push_back(15);
+        c.push_back(16);
+        c.push_back(23);
+        c.push_back(42);
+
+        c.erase(c.begin(), c.end());
+        EXPECT_TRUE(c.empty());
+    });
+}
 
 TEST(correctness, reserve)
 {
