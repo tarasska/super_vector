@@ -125,7 +125,7 @@ struct vector_const_iterator {
     typedef T value_type;
     typedef T const& reference;
     typedef std::ptrdiff_t difference_type;
-    typedef T* pointer;
+    typedef T const* pointer;
     typedef std::random_access_iterator_tag iterator_category;
 
     template<typename> friend
@@ -883,7 +883,7 @@ class vector {
         set_null();
     }
 
-    // basic, strong if "end insert"
+    // strong
     iterator insert(const_iterator pos, const_reference elem) {
         if (pos == end()) {
             push_back(elem);
@@ -904,7 +904,7 @@ class vector {
                 allocate_from_size_with_header(size() < capacity() ? capacity() : capacity() * 2);
             pointer new_data_ptr = vec_data_(new_mem);
             try {
-                std::uninitialized_copy(begin(), iterator(pos.ptr_), new_data_ptr);
+                std::uninitialized_copy(cbegin().ptr_, pos.ptr_, new_data_ptr);
                 set_header_(new_mem, pos - begin(), capacity() * 2);
             } catch (...) {
                 free_empty_memory(new_mem);
@@ -921,7 +921,7 @@ class vector {
                 throw;
             }
             try {
-                std::uninitialized_copy(iterator(pos.ptr_), end(), new_data_ptr);
+                std::uninitialized_copy(pos.ptr_, cend().ptr_, new_data_ptr);
                 vec_size_(new_mem) += end() - pos;
             } catch (...) {
                 free_with_destruct(new_mem);
@@ -941,7 +941,7 @@ class vector {
     // basic, strong if "end erase"
     iterator erase(const_iterator first, const_iterator last) {
         if (first == last) {
-            return iterator(first.ptr_);
+            return iterator(const_cast<pointer>(first.ptr_));
         }
         if (is_small()) {
             if (first != last) {
