@@ -636,7 +636,7 @@ class vector {
           mix_ptr new_mem = allocate_from_size_with_header(last - first);
           try {
               std::uninitialized_copy(first, last, vec_data_(new_mem));
-              set_header_(last - first, last - first);
+              set_header_(new_mem, last - first, last - first);
           } catch (...) {
               free_empty_memory(new_mem);
               set_null();
@@ -854,8 +854,7 @@ class vector {
               mix_ptr ptr = nullptr;
               try {
                   ptr = allocate_from_size_with_header(new_size);
-                  set_header_(new_size, new_size);
-
+                  set_header_(ptr, new_size, new_size);
                   std::uninitialized_fill(vec_data_(ptr), vec_data_(ptr) + new_size, value_type());
               } catch (...) {
                   free_empty_memory(ptr);
