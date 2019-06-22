@@ -855,6 +855,7 @@ class vector {
               try {
                   ptr = allocate_from_size_with_header(new_size);
                   set_header_(new_size, new_size);
+
                   std::uninitialized_fill(vec_data_(ptr), vec_data_(ptr) + new_size, value_type());
               } catch (...) {
                   free_empty_memory(ptr);
