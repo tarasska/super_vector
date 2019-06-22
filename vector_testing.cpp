@@ -6,6 +6,8 @@
 typedef vector<counted> container;
 typedef vector<int> container_int;
 
+static_assert(sizeof(vector<counted>) <= sizeof(void*) + std::max(sizeof(void*), sizeof(counted)));
+
 TEST(correctness, default_ctor)
 {
     faulty_run([]
