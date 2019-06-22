@@ -842,12 +842,25 @@ class vector {
       if (new_size == 0) {
           clear();
       }
-      if (new_size == 1 && is_small() && empty()) {
-          try {
-              variant_ = value_type();
-          } catch (...) {
-              set_null();
-              throw;
+      if (is_small() && empty()) {
+          if (new_size == 1) {
+              try {
+                  variant_ = value_type();
+              } catch (...) {
+                  set_null();
+                  throw;
+              }
+          } else {
+              mix_ptr ptr = nullptr;
+              try {
+                  ptr = allocate_from_size_with_header(new_size);
+                  set_header_(new_size, new_size);
+                  std::uninitialized_fill(vec_data_(ptr), vec_data_(ptr) + new_size, value_type());
+              } catch (...) {
+                  free_empty_memory(ptr);
+                  throw;
+              }
+              variant_ = ptr;
           }
           return;
       }
